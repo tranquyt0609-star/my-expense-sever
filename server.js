@@ -3,20 +3,25 @@ const cors = require('cors');
 const { Pool } = require('pg');
 
 const app = express();
-const port = 3000; // Node.js thường chạy cổng 3000
+// Render sẽ tự cấp cổng qua biến môi trường, nếu không thì dùng 3000
+const port = process.env.PORT || 3000;
 
-// Cấu hình Database PostgreSQL
+// === CẤU HÌNH DATABASE CHUẨN CHO CLOUD ===
 const pool = new Pool({
-    user: 'postgres',      // User mặc định
-    host: 'localhost',
-    database: 'ExpeSQL', // Tên DB bạn đã tạo trong pgAdmin
-    password: '123456@',    // <--- ĐỔI THÀNH PASS CỦA BẠN
-    port: 5432,
+    // Lấy đường link kết nối từ biến môi trường trên Render
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false // Bắt buộc phải có dòng này khi dùng Neon
+    }
 });
 
-// Middleware để đọc JSON từ Android
+// Middleware
 app.use(cors());
 app.use(express.json()); 
+
+app.get('/', (req, res) => {
+    res.send("Server đang chạy thành công!");
+});
 
 // 1. API Đăng nhập
 app.post('/api/login', async (req, res) => {
@@ -47,8 +52,8 @@ app.post('/api/register', async (req, res) => {
         );
         res.json({ status: 'success', message: 'Đăng ký thành công' });
    } catch (err) {
-        console.log("CHI TIẾT LỖI:", err); // Dòng này sẽ in lỗi ra màn hình đen
-        res.json({ status: 'fail', message: err.message }); // Dòng này gửi lỗi về điện thoại
+        console.log("CHI TIẾT LỖI:", err);
+        res.json({ status: 'fail', message: err.message });
     }
 });
 
@@ -65,12 +70,11 @@ app.get('/api/get_transactions', async (req, res) => {
         `;
         const result = await pool.query(query, [userId]);
         
-        // Map dữ liệu để khớp với Android (Node pg trả về biến 'is_income', Android cần 'isIncome')
         const data = result.rows.map(row => ({
             id: row.id,
-            amount: parseFloat(row.amount), // Chuyển string sang số
+            amount: parseFloat(row.amount),
             note: row.note,
-            isIncome: row.is_income // PostgreSQL trả về true/false chuẩn luôn
+            isIncome: row.is_income
         }));
 
         res.json(data);
@@ -82,10 +86,8 @@ app.get('/api/get_transactions', async (req, res) => {
 // 4. API Thêm giao dịch
 app.post('/api/add_transaction', async (req, res) => {
     const { user_id, amount, note, isIncome } = req.body;
-    
-    // Logic: Nếu Thu (true) -> cat_id=1, Nếu Chi (false) -> cat_id=2
-    // Đảm bảo bạn đã tạo category ID 1 và 2 trong pgAdmin rồi nhé
-    const categoryId = isIncome ? 1 : 2;
+    // ID 1 là Lương (Thu), ID 4 là Ăn uống (Chi) - Theo SQL trên Neon
+    const categoryId = isIncome ? 1 : 4;
 
     try {
         await pool.query(
@@ -100,5 +102,5 @@ app.post('/api/add_transaction', async (req, res) => {
 
 // Chạy Server
 app.listen(port, () => {
-    console.log(`Server Node.js đang chạy tại: http://localhost:${port}`);
+    console.log(`Server Node.js đang chạy tại cổng: ${port}`);
 });
